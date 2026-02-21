@@ -57,11 +57,14 @@ for val in package_counts.index:
 
 # %%
 """
-## Stage 1: Data Preparation & Feature Engineering
+## Stage 1: Building the Data Foundation (Feature Engineering)
+**PM Perspective:** Before AI can predict anything, we have to translate raw database rows into behavioral human signals. 
+Instead of just looking at raw 'checkout dates', we engineer features like 'Length of Stay' and 'Days Until Trip' because those represent actual user intent.
 """
 # %%
 
-print("Loading and prepping data...")
+print("\n--- Stage 1: Data Preparation ---")
+print("Translating raw dates into behavioral signals (stay_duration, days_to_trip)...")
 
 # We load a chunk of 50,000 rows to make it fast for learning.
 df = pd.read_csv('../Datasets/Expedia_travel.csv', nrows=50000)
@@ -95,10 +98,9 @@ X_test_scaled = scaler.transform(X_test)
 
 # %%
 """
-## Stage 2: The Baseline Model - Logistic Regression
-**MATH BEHIND LOGISTIC REGRESSION:**
-It uses the "Sigmoid Function": `P(y=1) = 1 / (1 + e^-(wX + b))`
-It draws a straight line (or plane) through the data. It calculates a weight (w) for every feature. If the output probability is > 0.5, it predicts Class 1 (Package).
+## Stage 2: The Baseline Model (Logistic Regression)
+**PM Perspective:** Never jump straight to the most complex AI. Always build a simple, interpretable baseline first. 
+If a basic statistical equation (Logistic Regression) achieves our business goals, we don't need to pay for a massive neural network.
 """
 # %%
 
@@ -109,19 +111,9 @@ y_pred_log = log_model.predict(X_test_scaled)
 
 # %%
 """
-## Stage 3: The Advanced Model - Gradient Boosting (XGBoost)
-**MATH BEHIND GRADIENT DESCENT & BOOSTING (For Learning):**
-Instead of building one massive tree, XGBoost builds hundreds of simple "weak" trees sequentially. Each new tree focuses *only* on the mistakes of the previous trees.
-
-**A Simple Example:** Imagine predicting a user's probability of buying a package (0.0 or 1.0).
-1. **Base Prediction:** Start by guessing the average. Let's say 20% of users buy a package. Our `Pred_0` is `0.2` for everyone.
-2. **Calculate Error (Residual):** For User A who *did* buy a package (Actual = 1.0), the Error is `Actual - Pred_0 = 1.0 - 0.2 = 0.8`.
-3. **Train a Tree on the Error:** We train Tree #1 to predict this `0.8` error using User A's features (e.g., kids, long stay). Tree #1 looks at User A and predicts, say, `0.6`.
-4. **Gradient Descent Step (Update):** Update the overall prediction. 
-   `New Pred = Old Pred + (Learning Rate * Tree Prediction)`
-   With a Learning Rate of `0.1` (our "step size"), the new prediction for User A is: 
-   `Pred_1 = 0.2 + (0.1 * 0.6) = 0.26`
-5. **Repeat:** Repeat steps 2-4 hundreds of times. User A's prediction slowly climbs from 0.26, to 0.32, to 0.45... inching closer to 1.0. This slow, steady adjustment is "Gradient Descent".
+## Stage 3: The Optimized Engine (XGBoost)
+**PM Perspective:** To maximize revenue, we need the highest possible accuracy on our structured, proprietary data (our 'Data Moat').
+XGBoost is the industry standard for this. Instead of one complex AI brain, it builds hundreds of simple decision trees chronologically. Each new tree focuses *only* on correcting the mistakes of the previous trees.
 """
 # %%
 
@@ -132,7 +124,8 @@ y_pred_xgb = xgb_model.predict(X_test)
 
 # %%
 """
-## Stage 4: Model Evaluation (Product Metrics)
+## Stage 4: Defining Success (Product Metrics)
+**PM Perspective:** Accuracy alone is a vanity metric. If 90% of users never buy a package, a model that guesses "No" every time is 90% accurate, but drives $0 in revenue. We care about balancing Precision and Recall.
 **PRODUCT METRICS EXPLANATION:**
 1. Accuracy: `(True Positives + True Negatives) / Total`
    - "How often were we right overall?" (Can be misleading if data is imbalanced).
