@@ -23,17 +23,11 @@ By using an **XGBoost Classification Model**, we calculate a probability score f
     *   Replicates a modern hotel search experience.
     *   Demonstrates the final UX of the A/B test: injecting a subtle slide-up popup only when a high-probability simulated persona hits the page.
 
-*(Note: The `Expedia_travel.csv` dataset is required in a `/Datasets/` folder to run the `.py` script, but is excluded from version control due to file size).*
+*(Note: The `Expedia_travel.csv` dataset, sourced via Kaggle, is required in a `/Datasets/` folder to run the `.py` script, but is excluded from version control due to file size).*
 
-## 🧠 Key Learnings for the Blog
-When you are ready to write the blog post, rely on these key pillars established in the code:
 
-1.  **The Baseline vs. The Advanced Model:** How Logistic Regression gives us a starting point, while XGBoost creates sequential "weak" trees to learn from past mistakes (Gradient Descent).
-2.  **Product Metrics over Technical Metrics:** Why *Precision* (avoiding false alarms/friction) and *Recall* (capturing revenue opportunities) matter more to a PM than pure *Accuracy*.
-3.  **Hyperparameter Tuning:** How tweaking `learning_rate` and `n_estimators` is like turning the dials on a radio to get the clearest signal without overfitting.
-4.  **The A/B Test UX:** Why having a predictive backend is useless without a thoughtful frontend application. The 0.6 probability threshold represents a deliberate business decision balancing UX and conversions.
 
 ## 🚀 How to Run
 
 1.  **To see the ML Model:** Run `python Algorithm/package_upsell_model.py` in your terminal. You will see the persona simulations print to the console.
-2.  **To see the UI Prototype:** Open `Algorithm/skyscanner_upsell_demo.html` in any web browser and watch the subtle AI-driven popup slide in after 2 seconds.
+2.  **To see the UI Prototype:** Open `Algorithm/skyscanner_upsell_demo.html` in any web browser to see the "Skydemo" experience, and watch the subtle AI-driven popup slide in based on the backend model.
