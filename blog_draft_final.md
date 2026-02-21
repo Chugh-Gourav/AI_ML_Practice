@@ -42,11 +42,11 @@ On purely tabular data, tree-based ensembles frequently generalize better out-of
 **2. The Latency Cost: An Empirical Benchmark**
 Inference speed dictates UX. While savvy engineering teams can mitigate latency by using asynchronous scoring (e.g., scoring the user in the background while the page loads), real-time, synchronous scoring is often required for dynamic pricing or instant cross-sells. 
 
-To prove this, my team ran a live benchmark testing a heavily-tuned XGBoost model against a modern Tabular Foundation Model (TabPFN v2.5). The results were stark:
-*   **XGBoost Single Inference:** `3.52 milliseconds`
-*   **TabPFN Single Inference:** `560.36 milliseconds`
+To prove this, my team ran a live benchmark testing a heavily-tuned XGBoost model against a modern Tabular Foundation Model (TabPFN v2.5, trained on an apples-to-apples 1,000 row subset). The results were stark:
+*   **XGBoost Single Inference:** `2.68 milliseconds`
+*   **TabPFN Single Inference:** `5104.83 milliseconds (5.1 seconds)`
 
-While deep learning latency can be mitigated by provisioning expensive GPU infrastructure, an optimized local XGBoost model natively completes inference directly in 2-5 milliseconds on standard, highly scalable CPU hardware. At 250 million searches a year, introducing a synchronous 560ms delay to a core booking flow creates millions of micro-frictions, degrading the product experience. XGBoost is effectively **159x faster** natively, rendering its latency practically invisible.
+While deep learning latency can be mitigated by provisioning expensive GPU infrastructure, an optimized local XGBoost model natively completes inference directly in 2-5 milliseconds on standard, highly scalable CPU hardware. At 250 million searches a year, introducing a synchronous 5-second delay to a core booking flow creates millions of micro-frictions, degrading the product experience. XGBoost is effectively **1,900x faster** natively, rendering its latency practically invisible.
 
 **The Illustrative Annual Impact:**
 *   **The Heavy AI Option:** A 0.1% theoretical lift generates 365,000 new package bookings (+ $18.2 Million gross lift), but comes with significant architectural complexity and higher inference costs.

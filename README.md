@@ -26,11 +26,11 @@ By using an **XGBoost Classification Model**, we calculate a probability score f
 ## ⏱️ The Latency Benchmark: XGBoost vs. Deep Learning
 Because executive hype often demands "Generative AI" or "Deep Learning", the Python script explicitly tests this by implementing **TabPFN** (a Tabular Foundation Model running on a Transformer architecture).
 
-The script runs a live inference latency benchmark on a single user transaction (the exact checkout flow requirement). The empirical results prove why classical Machine Learning remains dominant for real-time structured data:
-*   **XGBoost Latency:** ~`3.5 ms`
-*   **TabPFN Latency:** ~`560.3 ms`
+The script runs a live inference latency benchmark on a single user transaction (the exact checkout flow requirement), fitting the model on a 1000-row subset to stress-test memory vs standard algorithms. The empirical results prove why classical Machine Learning remains dominant for real-time structured data:
+*   **XGBoost Latency:** ~`2.6 ms`
+*   **TabPFN Latency:** ~`5,104.8 ms (5.1 seconds)`
 
-**PM Takeaway:** While Foundation Models are incredibly accurate without tuning, introducing a half-second synchronous delay to thousands of concurrent checkout flows creates massive friction. The optimized XGBoost ensemble is **~150x faster**, rendering its latency invisible and preserving the core user experience.
+**PM Takeaway:** While Foundation Models are incredibly accurate without tuning, introducing a 5-second synchronous delay to thousands of concurrent checkout flows creates massive friction. The optimized XGBoost ensemble is **~1,900x faster**, rendering its latency invisible and preserving the core user experience.
 
 *(Note: The `Expedia_travel.csv` dataset, sourced via Kaggle, is required in a `/Datasets/` folder to run the `.py` script, but is excluded from version control due to file size).*
 

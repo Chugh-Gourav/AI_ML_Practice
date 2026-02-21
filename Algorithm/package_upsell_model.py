@@ -84,6 +84,9 @@ features = ['is_mobile', 'srch_adults_cnt', 'srch_children_cnt', 'srch_rm_cnt', 
 target = 'is_package'
 
 df_clean = df[features + [target]].copy()
+
+# PM Note: 'orig_destination_distance' has many missing values. We are using median imputation here for simplicity,
+# but it is important to flag that this could introduce noise into our model's signal.
 for col in features:
     df_clean[col] = df_clean[col].fillna(df_clean[col].median())
 
@@ -186,7 +189,9 @@ param_grid = {
 base_xgb = xgb.XGBClassifier(random_state=42, eval_metric='logloss')
 
 # 3. Set up the Search (This will try all 3x3 = 9 combinations!)
-grid_search = GridSearchCV(estimator=base_xgb, param_grid=param_grid, scoring='accuracy', cv=3, verbose=1)
+# PM Note: We use 'roc_auc' (Area Under the Receiver Operating Characteristic Curve) instead of 'accuracy' 
+# because 'accuracy' is a vanity metric when our target class (packages) is heavily imbalanced.
+grid_search = GridSearchCV(estimator=base_xgb, param_grid=param_grid, scoring='roc_auc', cv=3, verbose=1)
 
 # 4. Run the Search
 print("Searching for the best parameters...")
@@ -196,9 +201,9 @@ grid_search.fit(X_train, y_train)
 print("\n--- Detailed Results for Each Setup ---")
 results = grid_search.cv_results_
 for i in range(len(results['params'])):
-    acc = results['mean_test_score'][i]
+    score = results['mean_test_score'][i]
     params = results['params'][i]
-    print(f"Accuracy: {acc:.4f} | Parameters: {params}")
+    print(f"ROC-AUC Score: {score:.4f} | Parameters: {params}")
 
 print(f"\n🏆 Best Settings Found: {grid_search.best_params_}")
 best_xgb_model = grid_search.best_estimator_
@@ -267,7 +272,6 @@ for i in range(len(dummy_data)):
 
 print("\nPM Takeaway: Setting the threshold at 0.6 balances aggressive upselling with user experience.")
 import time
-import time
 from tabpfn import TabPFNClassifier
 
 print("\n--- Stage 7: The Foundation Model Prototype (TabPFN) ---")
@@ -275,8 +279,9 @@ print("Let's test an emerging 'Tabular Foundation Model' like TabPFN.")
 print("It uses a Transformer architecture (like an LLM) pre-trained to understand tabular data without hyperparameter tuning.")
 
 # 1. Initialize TabPFN
-# Limit to just 100 rows to ensure it runs immediately for the benchmark demonstration
-subset_size = min(100, len(X_train))
+# We limit to 1000 rows. While not a fully scaled apples-to-apples comparison with XGBoost,
+# it provides a fairer latency benchmark than just 100 rows without completely maxing out memory.
+subset_size = min(1000, len(X_train))
 X_train_sub = X_train.iloc[:subset_size]
 y_train_sub = y_train.iloc[:subset_size]
 
