@@ -273,3 +273,58 @@ for i in range(len(dummy_data)):
     print(f"Action: {'� SHOW POPUP (Prob > 60%)' if trigger_popup else '🛑 NO POPUP (Skip to reduce friction)'}")
 
 print("\nPM Takeaway: Setting the threshold at 0.6 balances aggressive upselling with user experience.")
+import time
+import time
+from tabpfn import TabPFNClassifier
+
+print("\n--- Stage 7: The Foundation Model Prototype (TabPFN) ---")
+print("Let's test an emerging 'Tabular Foundation Model' like TabPFN.")
+print("It uses a Transformer architecture (like an LLM) pre-trained to understand tabular data without hyperparameter tuning.")
+
+# 1. Initialize TabPFN
+# Limit to just 100 rows to ensure it runs immediately for the benchmark demonstration
+subset_size = min(100, len(X_train))
+X_train_sub = X_train.iloc[:subset_size]
+y_train_sub = y_train.iloc[:subset_size]
+
+print(f"\nInitializing TabPFN (Training on {subset_size} samples for demonstration)...")
+try:
+    # Try older version API if it changed recently
+    tabpfn_model = TabPFNClassifier(device='cpu') 
+except Exception as e:
+    print(f"Init Error: {e}")
+
+# 2. "Train" TabPFN
+start_time = time.time()
+tabpfn_model.fit(X_train_sub, y_train_sub)
+tabpfn_train_time = time.time() - start_time
+print(f"TabPFN Fitting Time: {tabpfn_train_time:.4f} seconds")
+
+# 3. Evaluate Accuracy (on a small subset too so it doesn't hang)
+# We test on 1000 rows
+X_test_sub = X_test.iloc[:1000]
+y_test_sub = y_test.iloc[:1000]
+y_pred_tabpfn = tabpfn_model.predict(X_test_sub)
+evaluate_model("TabPFN Foundation Model (Subset Test)", y_test_sub, y_pred_tabpfn)
+
+# 4. The Critical UX Metric: Inference Latency
+print("\n--- The Ultimate PM Metric: Inference Latency (Speed) ---")
+print("How fast can these models make a single prediction when a user clicks 'Search'?")
+
+single_user = X_test.iloc[[0]]
+
+start_xgb = time.perf_counter()
+best_xgb_model.predict(single_user)
+xgb_latency = (time.perf_counter() - start_xgb) * 1000  # in ms
+
+start_tabpfn = time.perf_counter()
+tabpfn_model.predict(single_user)
+tabpfn_latency = (time.perf_counter() - start_tabpfn) * 1000  # in ms
+
+print(f"XGBoost Single Inference: {xgb_latency:.2f} ms")
+print(f"TabPFN Single Inference:  {tabpfn_latency:.2f} ms")
+
+if tabpfn_latency > xgb_latency:
+    multiplier = tabpfn_latency / xgb_latency
+    print(f"\nConclusion: XGBoost is {multiplier:.0f}x faster for real-time inference.")
+    print("While TabPFN is incredibly impressive and requires zero tuning, its latency makes synchronous (real-time) execution difficult at Skyscanner scale compared to optimized tree ensembles.")
