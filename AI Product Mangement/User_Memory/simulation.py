@@ -4,7 +4,7 @@ Module 6: Capstone Project
 
 This script programmatically simulates travelers over a 24-step sequence
 to validate a centralized context/memory layer (HCE) across Flights, Stays, and Transport.
-It integrates a live Google GenAI SDK (Gemini 2.0 Flash) for background memory extraction,
+It integrates a live Google GenAI SDK (Gemini 2.5 Flash) for background memory extraction,
 preference consolidation, and Price Drop copy generation.
 It compares a personalized Treatment group with a siloed Control group, monitors privacy compliance,
 evaluates database and caching latencies, estimates scaling costs, and exports
@@ -94,7 +94,7 @@ class TravellerMemorySimulation:
         
         print(f"🚀 Starting {NUM_AGENTS} Traveller Memory Agent-Based Simulation...")
         print(f"   Steps (days): {STEPS} | Population: {NUM_AGENTS} | Comm Limit: {COMMUNICATION_LIMIT}")
-        print(f"   LLM Mode: {'LIVE (Gemini 2.0 Flash)' if llm_client.LIVE_LLM_MODE else 'MOCK (Rule-based)'}")
+        print(f"   LLM Mode: {'LIVE (Gemini 2.5 Flash)' if llm_client.LIVE_LLM_MODE else 'MOCK (Rule-based)'}")
         
         for step in range(1, STEPS + 1):
             for agent in self.agents:
