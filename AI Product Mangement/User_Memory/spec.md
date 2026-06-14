@@ -13,7 +13,7 @@ graph TD
 
     subgraph Core [Horizontal Context Engine]
         B[Context Broker <br/> Session State Management]:::aiNative
-        C[Gemini 2.5 Flash <br/> Intent & Memory Extraction]:::aiNative
+        C[Large Language Model <br/> Intent & Memory Extraction]:::aiNative
         D[(In-Memory Profile DB <br/> Segment & Preferences)]:::aiNative
     end
 
