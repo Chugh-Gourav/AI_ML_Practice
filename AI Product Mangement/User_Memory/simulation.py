@@ -1,5 +1,5 @@
 """
-Skyscanner Horizontal Context Engine (HCE) - Traveller Memory Simulation
+Context Engine Horizontal Context Engine (HCE) - Traveller Memory Simulation
 Module 6: Capstone Project
 
 This script programmatically simulates travelers over a 24-step sequence
@@ -51,8 +51,8 @@ import llm_client
 # ==============================================================================
 # CONFIGURATION & CONSTANTS
 # ==============================================================================
-OUTPUT_DIR = "/Users/gouravsstudy/Desktop/AI Revision, and Fun Learning/AI Product Mangement/M6_Traveller_Memory_Capstone"
-NUM_AGENTS = 30
+OUTPUT_DIR = "/Users/gouravsstudy/Desktop/AI Revision, and Fun Learning/AI Product Mangement/User_Memory"
+NUM_AGENTS = 20
 STEPS = 24
 COMMUNICATION_LIMIT = 20
 
@@ -80,7 +80,8 @@ class TravellerMemorySimulation:
 
     def run(self):
         import mlflow
-        mlflow.set_experiment("Skyscanner_HCE_Simulation")
+        mlflow.set_tracking_uri("sqlite:///mlflow.db")
+        mlflow.set_experiment("Context Engine_HCE_Simulation")
         mlflow.start_run(run_name=f"Run_{datetime.now().strftime('%Y%m%d_%H%M%S')}")
         mlflow.log_params({
             "num_agents": NUM_AGENTS,
@@ -112,6 +113,29 @@ class TravellerMemorySimulation:
                     self.searches[agent.test_group] += 1
                     
                     if state.current_state == "IDLE":
+                        dest = random.choice([d for d in destinations if d != agent.origin[:3]])
+                        dates_start = random.randint(10, 20)
+                        dates_str = f"2026-07-{dates_start} to 2026-07-{dates_start+7}"
+                        
+                        if random.random() < 0.25:
+                            state.current_state = "SEARCHING_PACKAGES"
+                            state.active_destination = dest
+                            state.flight_dates = dates_str
+                            state.trip_vibe = agent.persona if agent.consent_opt_in else "None"
+                            layout = self.get_applied_layout(state.current_state, token, is_treatment, dest)
+                            
+                            traffic_sources = ["falcon-packages-search-controls", "marketing-email-campaign", "homepage-banner-deal"]
+                            details = {
+                                "origin_entity_id": f"275440{random.randint(10, 99)}",
+                                "destination_entity_id": f"275397{random.randint(10, 99)}",
+                                "dates": dates_str,
+                                "passengers": 4 if agent.persona == "Multi-Gen Family Planner" else (2 if agent.persona != "Solo Explorer" else 1),
+                                "traffic_source": random.choice(traffic_sources)
+                            }
+                            self.log_interaction(step, agent, state, "SEARCH", layout, latency, details)
+                            state.consecutive_idle_steps = 0
+                            continue
+                            
                         state.current_state = "SEARCHING_FLIGHTS"
                         dest = random.choice([d for d in destinations if d != agent.origin[:3]])
                         dates_start = random.randint(10, 20)
@@ -138,23 +162,88 @@ class TravellerMemorySimulation:
                         state.current_state = "SEARCHING_TRANSPORT"
                         
                     layout = self.get_applied_layout(state.current_state, token, is_treatment, state.active_destination)
-                    details = {"destination": state.active_destination, "dates": state.flight_dates}
+                    
+                    if state.current_state == "SEARCHING_FLIGHTS":
+                        details = {
+                            "origin": agent.origin,
+                            "destination": state.active_destination,
+                            "depart_date": state.flight_dates.split(" to ")[0],
+                            "return_date": state.flight_dates.split(" to ")[1] if " to " in state.flight_dates else "",
+                            "travellers": 1 if agent.persona in ["Solo Explorer", "Business Bleisure"] else (4 if agent.persona == "Multi-Gen Family Planner" else 2),
+                            "cabin_class": "Economy",
+                            "applied_filters": ["Direct flights", "Airline: Vueling Airlines"] if random.random() < 0.3 else []
+                        }
+                    else:
+                        details = {"destination": state.active_destination, "dates": state.flight_dates}
+                        
                     self.log_interaction(step, agent, state, "SEARCH", layout, latency, details)
+                    
+                    # 10% chance to create a price alert right after a flight search
+                    if state.current_state == "SEARCHING_FLIGHTS" and random.random() < 0.1:
+                        alert_layout = "PRICE_ALERT_MODAL: Success Notification"
+                        alert_details = {
+                            "origin": agent.origin,
+                            "destination": state.active_destination,
+                            "dates": state.flight_dates,
+                            "alert_type": "Email",
+                            "price_threshold_tracked": random.randint(45, 120)
+                        }
+                        self.log_interaction(step, agent, state, "CREATE_PRICE_ALERT", alert_layout, latency, alert_details)
+                        
                     state.consecutive_idle_steps = 0
                     
                 elif action == "NAVIGATE_TAB":
                     if state.current_state == "SEARCHING_FLIGHTS":
-                        state.current_state = "SEARCHING_STAYS"
-                    elif state.current_state == "SEARCHING_STAYS":
-                        state.current_state = "SEARCHING_TRANSPORT"
+                        if random.random() < 0.3 and is_treatment:
+                            state.current_state = "CONVERSATIONAL_STAYS_SEARCH"
+                            prompts = [
+                                f"Boutique stays in {state.active_destination} with a nice view",
+                                f"Pet friendly hotels near {state.active_destination} city center",
+                                f"Luxury resorts with spa and pool in {state.active_destination}",
+                                f"Cheap hostels for backpackers in {state.active_destination}"
+                            ]
+                            details = {
+                                "target_vertical": "Stays",
+                                "destination": state.active_destination,
+                                "checkin": state.flight_dates.split(" to ")[0] if " to " in state.flight_dates else "",
+                                "checkout": state.flight_dates.split(" to ")[1] if " to " in state.flight_dates else "",
+                                "guests": 4 if agent.persona == "Multi-Gen Family Planner" else 2,
+                                "rooms": 2 if agent.persona == "Multi-Gen Family Planner" else 1,
+                                "user_prompt": random.choice(prompts),
+                                "bot_suggested_prompts_clicked": random.choice([True, False])
+                            }
+                        else:
+                            state.current_state = "SEARCHING_STAYS"
+                            details = {"target_vertical": "Stays"}
+                    elif state.current_state in ["SEARCHING_STAYS", "CONVERSATIONAL_STAYS_SEARCH"]:
+                        if random.random() < 0.3 and is_treatment:
+                            state.current_state = "PLANNING_ROAD_TRIP"
+                            route_prefs = ["Adventure Trip", "Coastal Drive", "Historical Sites Route", "Food & Wine Trail"]
+                            interests = [["Nature & Parks", "Hiking"], ["Beaches", "Seafood"], ["Museums", "Castles"], ["Vineyards", "Fine Dining"]]
+                            idx = random.randint(0, 3)
+                            details = {
+                                "target_vertical": "Transport (Car Hire)",
+                                "route": f"{state.active_destination} {random.choice(['Scenic', 'Express', 'Coastal'])} Route",
+                                "explicit_preferences": {
+                                    "route_preference": route_prefs[idx],
+                                    "interests": interests[idx]
+                                },
+                                "inferred_requirements": {
+                                    "passengers": f"{1 if agent.persona == 'Solo Explorer' else (4 if agent.persona == 'Multi-Gen Family Planner' else 2)} travellers",
+                                    "recommended_vehicle_class": random.choice(["medium-sized car", "convertible", "SUV", "minivan"])
+                                }
+                            }
+                        else:
+                            state.current_state = "SEARCHING_TRANSPORT"
+                            details = {"target_vertical": "Transport"}
                     else:
                         state.current_state = "SEARCHING_FLIGHTS"
+                        details = {"target_vertical": "Flights"}
                         
                     if is_treatment and agent.consent_opt_in:
                         self.cross_vertical_redirects[agent.test_group] += 1
                         
                     layout = self.get_applied_layout(state.current_state, token, is_treatment, state.active_destination)
-                    details = {"target_vertical": state.current_state}
                     self.log_interaction(step, agent, state, "NAVIGATE_TAB", layout, latency, details)
                     state.consecutive_idle_steps = 0
                     
@@ -162,28 +251,39 @@ class TravellerMemorySimulation:
                     state.redirect_count += 1
                     self.redirects[agent.test_group] += 1
                     
-                    if state.current_state == "SEARCHING_STAYS":
+                    if state.current_state in ["SEARCHING_STAYS", "CONVERSATIONAL_STAYS_SEARCH"]:
                         self.cross_vertical_redirects[agent.test_group] += 1
                         state.current_state = "STAY_REDIRECTED"
-                    elif state.current_state == "SEARCHING_TRANSPORT":
+                    elif state.current_state in ["SEARCHING_TRANSPORT", "PLANNING_ROAD_TRIP"]:
                         self.cross_vertical_redirects[agent.test_group] += 1
                         state.current_state = "FULLY_REDIRECTED"
+                    elif state.current_state == "SEARCHING_PACKAGES":
+                        self.cross_vertical_redirects[agent.test_group] += 1
+                        state.current_state = "PACKAGE_REDIRECTED"
                     else:
                         state.current_state = "FLIGHT_REDIRECTED"
                         
                     layout = self.get_applied_layout(state.current_state, token, is_treatment, state.active_destination)
                     
-                    # Log the specific filters the user interacted with before redirecting
-                    filters = []
-                    if agent.baggage_tolerance == "carry_on_only": filters.append("Carry-on Included")
-                    if agent.baggage_tolerance == "heavy_checked": filters.append("2x Checked Bags")
-                    if agent.preferred_alliance != "none": filters.append(f"Alliance: {agent.preferred_alliance.replace('_', ' ').title()}")
-                    if agent.proximity_anxiety == "high": filters.append("Direct Flights Only")
-                    
-                    details = {
-                        "partner_redirected_to": "Booking.com" if "STAY" in state.current_state else "SkyscannerPartner",
-                        "applied_filters": filters
-                    }
+                    if state.current_state == "PACKAGE_REDIRECTED":
+                        details = {
+                            "search_request_id": f"530178d8-{random.randint(1000, 9999)}",
+                            "applied_filters": ["Sort: Best"],
+                            "clicked_card_position": 1,
+                            "partner_redirected_to": "External Package Provider"
+                        }
+                    else:
+                        # Log the specific filters the user interacted with before redirecting
+                        filters = []
+                        if agent.baggage_tolerance == "carry_on_only": filters.append("Carry-on Included")
+                        if agent.baggage_tolerance == "heavy_checked": filters.append("2x Checked Bags")
+                        if agent.preferred_alliance != "none": filters.append(f"Alliance: {agent.preferred_alliance.replace('_', ' ').title()}")
+                        if agent.proximity_anxiety == "high": filters.append("Direct Flights Only")
+                        
+                        details = {
+                            "partner_redirected_to": "Booking.com" if "STAY" in state.current_state else "Context EnginePartner",
+                            "applied_filters": filters
+                        }
                     self.log_interaction(step, agent, state, "REDIRECT_PARTNER", layout, latency, details)
                     
                     # Background Memory Extraction & Consolidation (LLM Call)
@@ -278,10 +378,12 @@ class TravellerMemorySimulation:
     def get_applied_layout(self, current_state: str, token: dict, is_treatment: bool, destination: str) -> str:
         if current_state in ["SEARCHING_FLIGHTS", "FLIGHT_REDIRECTED"]:
             return VerticalModules.get_flights_layout(token, is_treatment, destination)
-        elif current_state in ["SEARCHING_STAYS", "STAY_REDIRECTED"]:
-            return VerticalModules.get_stays_layout(token, is_treatment, destination)
-        elif current_state in ["SEARCHING_TRANSPORT", "FULLY_REDIRECTED"]:
-            return VerticalModules.get_transport_layout(token, is_treatment, destination)
+        elif current_state in ["SEARCHING_STAYS", "STAY_REDIRECTED", "CONVERSATIONAL_STAYS_SEARCH"]:
+            return VerticalModules.get_stays_layout(token, is_treatment, destination, conversational=(current_state == "CONVERSATIONAL_STAYS_SEARCH"))
+        elif current_state in ["SEARCHING_TRANSPORT", "FULLY_REDIRECTED", "PLANNING_ROAD_TRIP"]:
+            return VerticalModules.get_transport_layout(token, is_treatment, destination, road_trip=(current_state == "PLANNING_ROAD_TRIP"))
+        elif current_state in ["SEARCHING_PACKAGES", "PACKAGE_REDIRECTED"]:
+            return VerticalModules.get_packages_layout(token, is_treatment, destination)
         return "Default Home UI Layout"
 
     def log_interaction(self, step: int, agent: TravelAgentProfile, state: AgentState, action: str, layout: str, latency: float, action_details: dict = None):
@@ -304,7 +406,7 @@ class TravellerMemorySimulation:
     @mlflow.trace(name="generate_price_drop_push", span_type="tool")
     def generate_push_notification(self, agent, dest, nuance_str):
         print(f"      🤖 [LLM Call {llm_client.usage_stats['llm_calls_made']+1}] Generating alert copy for {agent.agent_id}...")
-        prompt = f"""You are a growth marketing copywriter at Skyscanner. Write a short, highly compelling Price Drop push notification (maximum 120 characters) for a traveler.
+        prompt = f"""You are a growth marketing copywriter at Context Engine. Write a short, highly compelling Price Drop push notification (maximum 120 characters) for a traveler.
         - Destination: {dest}
         - Persona: {agent.persona}
         - Origin Market: {agent.origin}
@@ -374,13 +476,13 @@ class TravellerMemorySimulation:
                     if agent.persona == "Value Hacker":
                         payload = f"Price Alert: {dest} flights dropped by ₹1,500! Partner airline rates now include free hand luggage."
                     elif agent.persona == "Loyalty Loyalist":
-                        payload = f"Price Alert: Partner flight fares to {dest} dropped. Earn double alliance points if you book via Skyscanner partner links today!"
+                        payload = f"Price Alert: Partner flight fares to {dest} dropped. Earn double alliance points if you book via Context Engine partner links today!"
                     elif agent.persona == "Multi-Gen Family Planner":
                         payload = f"Price Alert: {dest} family flights dropped. Lowest partner rates now group passenger seats together automatically."
                     else:
-                        payload = f"Price Alert: Partner flight deals to {dest} dropped. Compare rates in your Skyscanner app."
+                        payload = f"Price Alert: Partner flight deals to {dest} dropped. Compare rates in your Context Engine app."
                 else:
-                    payload = "Price Alert: Skyscanner found a price drop on your recent search! Come back and compare partner deals."
+                    payload = "Price Alert: Context Engine found a price drop on your recent search! Come back and compare partner deals."
                 
             # Simulate click / redirect action
             ctr_chance = 0.55 if (is_treatment and agent.consent_opt_in) else 0.25
@@ -401,7 +503,7 @@ class TravellerMemorySimulation:
             
             # Generate realistic deep link URL based on your example
             branch_id = f"15384{random.randint(100000, 999999)}"
-            deep_link_url = f"https://www.skyscanner.net/flights/search?entity_id={dest}&utm_source=newsletter&utm_medium=email&utm_campaign=price-drop-alert_{step}&_branch_match_id={branch_id}&_branch_referrer=H4sIAAAAA_{agent.agent_id}_encrypted_context"
+            deep_link_url = f"https://www.context-engine.net/flights/search?entity_id={dest}&utm_source=newsletter&utm_medium=email&utm_campaign=price-drop-alert_{step}&_branch_match_id={branch_id}&_branch_referrer=H4sIAAAAA_{agent.agent_id}_encrypted_context"
             
             if clicked:
                 # Connected Experience Use Case: Context Rehydration
@@ -542,16 +644,16 @@ class TravellerMemorySimulation:
         print(f"1. A/B TEST REVENUE & CONVERSION LIFT")
         print(f"   - Total Searches:       Control: {con_control_searches:<6d} | Treatment: {con_treatment_searches:<6d}")
         print(f"   - Total Partner Redirects: Control: {con_control_redirects:<6d} | Treatment: {con_treatment_redirects:<6d}")
-        print(f"   - Redirect Conversion Rate: Control: {c_search_rate:.2f}% | Treatment: {t_search_rate:.2f}%")
-        print(f"     👉 CONVERSION LIFT:      {lift_conversion:+.2f}% absolute lift")
-        print(f"   - Cross-Vertical Attach Rate: Control: {attach_control:.2f}% | Treatment: {attach_treatment:.2f}%")
-        print(f"     👉 ATTACH LIFT:          {lift_attach:+.2f}% absolute lift (Flights to Stays/Car Hire)")
+        print(f"   - Redirect Conversion Rate: Control: {c_search_rate:.0f}% | Treatment: {t_search_rate:.0f}%")
+        print(f"     👉 CONVERSION LIFT:      {lift_conversion:+.0f}% absolute lift")
+        print(f"   - Cross-Vertical Attach Rate: Control: {attach_control:.0f}% | Treatment: {attach_treatment:.0f}%")
+        print(f"     👉 ATTACH LIFT:          {lift_attach:+.0f}% absolute lift (Flights to Stays/Car Hire)")
         print("-" * 80)
         print(f"2. LIFECYCLE COMMUNICATIONS ROI ({COMMUNICATION_LIMIT} price alerts)")
         print(f"   - Total Alerts Sent:    Control: {total_control_comms:<6d} | Treatment: {total_treatment_comms:<6d}")
-        print(f"   - Alert Click Rate (CTR): Control: {ctr_control:.2f}% | Treatment: {ctr_treatment:.2f}%")
-        print(f"   - Alert Redirect Rate:    Control: {cvr_control:.2f}% | Treatment: {cvr_treatment:.2f}%")
-        print(f"     👉 ALERT REDIRECT LIFT:  {cvr_treatment - cvr_control:+.2f}% absolute conversion lift")
+        print(f"   - Alert Click Rate (CTR): Control: {ctr_control:.0f}% | Treatment: {ctr_treatment:.0f}%")
+        print(f"   - Alert Redirect Rate:    Control: {cvr_control:.0f}% | Treatment: {cvr_treatment:.0f}%")
+        print(f"     👉 ALERT REDIRECT LIFT:  {cvr_treatment - cvr_control:+.0f}% absolute conversion lift")
         print("-" * 80)
         print(f"3. SYSTEM PERFORMANCE & CACHING AUDIT")
         print(f"   - Redis Cache Hit Rate:  {hit_rate:.2f}% ({hits} hits, {misses} misses)")

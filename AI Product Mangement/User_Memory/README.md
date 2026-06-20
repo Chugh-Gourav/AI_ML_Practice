@@ -106,6 +106,29 @@ To clearly show the value of this feature, we separate our metrics into Inputs, 
 *   **Privacy Compliance:** 0 cases where personalization signals were generated for a user without explicit cookie consent. Our automated test suite confirmed 0 violations.
 *   **Speed Penalties:** The website must load the memory from Redis with a **P95 < 15ms** and **P99 < 50ms** (over an internal VPC) to ensure zero degradation to the core search experience. Tail latency is what breaks UX, so averages are insufficient.
 
+## Interface Contracts & Data Schema
+
+To substantiate the architecture, here is the exact JSON schema contract between the LLM inference engine and the core Context Broker. This strict interface ensures the UI layers never have to parse unstructured AI output.
+
+```json
+{
+  "active_destination": "EDI",
+  "flight_dates": "2026-07-15 to 2026-07-22",
+  "trip_vibe": "Solo Explorer",
+  "confidence_score": 0.88
+}
+```
+
+The Redis cache persists this token against the `agent_id` with a **strictly enforced TTL of 3600 seconds (1 hour)**. This explicitly handles staleness; if a user walks away and returns the next day, the session resets to avoid injecting stale context (like showing weekend trips when they are now booking for next month).
+
+## Failure Modes & Tradeoffs
+
+No AI system is perfect. We explicitly designed the prototype for the following failure modes:
+
+1. **False Positives (The "Luxury Backpacker" problem):** If the AI misreads intent and shows budget hostels to a luxury traveler, it degrades the UX. We mitigate this by requiring a `confidence_score > 0.6` from the LLM. If confidence is low, we safely fall back to the generic Default UI.
+2. **The Cold Start Problem:** A new user with no signal will not receive personalization. The system waits until at least 2 structured clicks are gathered before issuing a background inference request.
+3. **Latency Spikes:** Over an internal VPC, Redis hits a P99 of ~15ms. If the cache misses or times out (>50ms), the frontend immediately falls back to the Default UI to prevent blocking the render path.
+
 ## Core Components
 - `simulation.py`: The script running the simulated users.
 - `context_broker.py`: The core engine managing the system, confidence checks, and the AI.

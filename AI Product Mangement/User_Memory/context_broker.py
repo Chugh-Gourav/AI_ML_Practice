@@ -14,8 +14,9 @@ class ContextBroker:
         self.profiles_db = {p.agent_id: p for p in profiles}
         self.sessions_db: dict[str, AgentState] = {p.agent_id: AgentState(agent_id=p.agent_id, current_state="IDLE") for p in profiles}
         
-        # Redis Cache Simulation: maps agent_id -> (StepCached, TokenJSONString)
-        self.redis_cache: dict[str, tuple[int, str]] = {}
+        # Redis Cache Simulation: maps agent_id -> (StepCached, TokenJSONString, ExpiryTimestamp)
+        # Represents an async real-time feature store with a 3600s TTL
+        self.redis_cache: dict[str, tuple[int, str, float]] = {}
         
         # Performance logging
         self.cache_hits = 0
@@ -47,13 +48,14 @@ class ContextBroker:
         is_cache_hit = False
         
         if cache_key in self.redis_cache:
-            cached_step, token_str = self.redis_cache[cache_key]
-            if step - cached_step <= 1:
+            cached_step, token_str, expiry = self.redis_cache[cache_key]
+            # Handle Staleness / TTL expiry explicitly
+            if time.time() < expiry and step - cached_step <= 1:
                 is_cache_hit = True
                 
         if is_cache_hit:
             self.cache_hits += 1
-            latency = random.uniform(0.5, 2.0)
+            latency = random.uniform(5.0, 15.0) # Realistic VPC P99 latency
             token = json.loads(token_str)
         else:
             self.cache_misses += 1
@@ -85,8 +87,8 @@ class ContextBroker:
                     "flight_dates": state.flight_dates if profile.consent_opt_in else ""
                 }
             }
-            
-            self.redis_cache[cache_key] = (step, json.dumps(token))
+            # Write to Redis with a 1 hour TTL (simulated)
+            self.redis_cache[cache_key] = (step, json.dumps(token), time.time() + 3600)
             self.db_write_ops += 1
             
         self.latencies.append(latency)
@@ -98,7 +100,7 @@ class ContextBroker:
         profile = self.profiles_db[agent_id]
         state = self.sessions_db[agent_id]
         
-        if not llm_client.LIVE_LLM_MODE or not profile.consent_opt_in:
+        if not profile.consent_opt_in:
             # Under mock mode, fallback to standard rule-based setting
             dest = search_query.get("destination", "LON")
             dates = search_query.get("dates", "2026-07-15")
@@ -115,7 +117,7 @@ class ContextBroker:
             
         print(f"      🤖 [LLM Call {llm_client.usage_stats['llm_calls_made']+1}] Extracting Initial Intent for {agent_id}...")
         
-        prompt = f"""You are the Skyscanner Horizontal Context Engine (Intent Broker). Analyze this search query and extract the traveler's intent:
+        prompt = f"""You are the Context Engine Horizontal Context Engine (Intent Broker). Analyze this search query and extract the traveler's intent:
         Origin: {origin}
         Search Action details: {json.dumps(search_query)}
         Traveler Persona Context: {profile.persona}
@@ -124,6 +126,7 @@ class ContextBroker:
         - "active_destination": airport code (3 letters, e.g. LHR, DEL, BOM, EDI, NYC, LAX)
         - "flight_dates": "YYYY-MM-DD to YYYY-MM-DD" matching their target dates
         - "trip_vibe": inferred traveler vibe, one of ["Value Hacker", "Loyalty Loyalist", "Multi-Gen Family Planner", "Business Bleisure", "Solo Explorer"]
+        - "confidence_score": float between 0.0 and 1.0 representing confidence in this inference
         
         Respond only with valid JSON. Do not include markdown blocks or explanation text."""
         
@@ -134,18 +137,26 @@ class ContextBroker:
             state.active_destination = res_json.get("active_destination", "LON")
             state.flight_dates = res_json.get("flight_dates", "2026-07-15 to 2026-07-22")
             state.trip_vibe = res_json.get("trip_vibe", profile.persona)
+            confidence = res_json.get("confidence_score", 0.9)
+            
+            # Simulated Rules Engine: Fallback if confidence is too low
+            if confidence < 0.6:
+                print(f"      ⚠️ Low confidence ({confidence}). Falling back to Default UI.")
+                raise ValueError("Low confidence inference")
+                
             self.db_write_ops += 1
             
             # Sync cache
             if agent_id in self.redis_cache:
-                _, token_str = self.redis_cache[agent_id]
+                _, token_str, expiry = self.redis_cache[agent_id]
                 token = json.loads(token_str)
                 token["intent_token"]["active_destination"] = state.active_destination
                 token["intent_token"]["trip_vibe"] = state.trip_vibe
                 token["intent_token"]["flight_dates"] = state.flight_dates
-                self.redis_cache[agent_id] = (step, json.dumps(token))
+                self.redis_cache[agent_id] = (step, json.dumps(token), expiry)
                 
-            time.sleep(1.0) # rate limit politeness
+            if llm_client.LIVE_LLM_MODE:
+                time.sleep(1.5) # heavier prompt takes more rate limits politeness
             return res_json
             
         except Exception as e:
@@ -174,13 +185,13 @@ class ContextBroker:
         profile = self.profiles_db[agent_id]
         state = self.sessions_db[agent_id]
         
-        if not llm_client.LIVE_LLM_MODE or not profile.consent_opt_in:
-            # Under mock mode, we fallback to standard consolidation
+        if not profile.consent_opt_in:
+            # If user hasn't opted in, fallback to no memory processing
             return {}
             
         print(f"      🤖 [LLM Call {llm_client.usage_stats['llm_calls_made']+1}] Extracting Memory for {agent_id}...")
         
-        prompt = f"""You are the Skyscanner Horizontal Context Engine (Memory Broker). Analyze these session clicks and extract the traveler's long-term preferences:
+        prompt = f"""You are the Context Engine Horizontal Context Engine (Memory Broker). Analyze these session clicks and extract the traveler's long-term preferences:
         Clicks Log: {json.dumps(clicks[-5:])}
         Current Profile: {json.dumps(asdict(profile))}
         
@@ -203,7 +214,8 @@ class ContextBroker:
             self.db_write_ops += 1
             
             # rate limiter politeness
-            time.sleep(1.0)
+            if llm_client.LIVE_LLM_MODE:
+                time.sleep(1.0)
             return res_json
         except Exception as e:
             print(f"      ⚠️ Gemini Extraction failed: {e}. Falling back gracefully.")
