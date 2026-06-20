@@ -6,7 +6,7 @@ In the travel industry, companies usually focus on improving one area at a time.
 
 This creates what I call the **Siloed Vertical Trap**. 
 
-The Horizontal Context Engine (HCE) is a prototype designed to fix this. It looks at how a user is clicking and searching in real-time, extracts intent signals (like luggage needs, trip type, and budget), and shares this understanding across all areas of the website. 
+The Horizontal Context Engine (HCE) is a prototype designed to fix this. Acting as an asynchronous real-time feature store (utilizing a CQRS pattern), it looks at how a user is clicking and searching in real-time, extracts intent signals (like luggage needs, trip type, and budget), and shares this understanding across all areas of the website. 
 
 ## The Strategy: Understanding over Code
 
@@ -20,35 +20,50 @@ This provides a clear business advantage:
 
 ## Architecture & Data Flow
 
-This architecture separates the extraction of the signal from the application of the UI rules, ensuring that AI unpredictability never breaks the core user experience.
+This architecture separates the extraction of the signal from the application of the UI rules, ensuring that AI unpredictability never breaks the core user experience. Background writes and LLM inferences are completely decoupled from the synchronous page-render path.
 
 ```mermaid
 graph TD
-    classDef default fill:#f5f5f5,stroke:#d0d0d0,stroke-width:1px,color:#333;
+    classDef sync_flow fill:#e6f3ff,stroke:#4a90e2,stroke-width:2px,color:#333;
+    classDef async_flow fill:#f5f5f5,stroke:#999,stroke-width:2px,stroke-dasharray: 5 5,color:#666;
     classDef gate fill:#fae3e1,stroke:#d99694,stroke-width:1px,color:#a61c00;
     classDef storage fill:#e0f3db,stroke:#a8d08d,stroke-width:1px,color:#274e13;
-    classDef db fill:#e6e0f8,stroke:#b4a7d6,stroke-width:1px,color:#351c75;
 
-    A[User clicks] --> B[Consent gate <br/> <i>Product-owned requirement</i>]:::gate
-    
+    A[User clicks]:::sync_flow --> B[Consent gate <br/> <i>Product requirement</i>]:::gate
     B -->|No consent| C[Skip, no tracking]
     
-    B --> D[Session manager]
-    D --> E[AI model <br/> <i>Extracts preference signal</i>]
+    subgraph Core Engine [Core engine]
+        D[Session manager <br/> <i>Tracks current actions</i>]:::async_flow
+        E[AI model <br/> <i>Hosted LLM API</i>]:::async_flow
+        F[Fast storage <br/> <i>Redis profile cache</i>]:::storage
+    end
+
+    B -.->|Async trigger| D
+    D -.->|Fire-and-forget| E
     
-    E --> F[Confidence check <br/> <i>Product-owned policy</i>]:::gate
+    E -.->|Timeout / Error| G[Default UI]
     
-    F -->|Low confidence| G[Default UI]
+    E -.-> Z[Confidence check <br/> <i>Rules engine</i>]:::gate
+    Z -.->|Low confidence| G
+    Z -.->|High confidence| F
     
-    F --> H[Fast storage <br/> <i>Session profile, short-lived</i>]:::storage
+    F -->|Sync read on next page| I[Layout changes <br/> <i>Relevant flights & hotels</i>]:::sync_flow
+    F -.->|Async job| J[Alerts and emails <br/> <i>Price drop notices</i>]:::async_flow
     
-    H --> I[Personalized UI]:::storage
-    H --> J[Targeted alerts]:::storage
-    H --> K[Main DB <br/> <i>Marketing & Product analytics</i>]:::db
+    subgraph Long-term storage and analytics
+        K[Main database <br/> <i>Stores history</i>]
+        L[Analytics <br/> <i>Behaviour and trends</i>]
+        M[ML training <br/> <i>Predicts future needs</i>]
+    end
+    
+    F -.->|Async batch| K
+    K -.-> L
+    K -.-> M
+    L -.-> M
 ```
 
-### Handling the "Cold Start"
-New users, first-time visitors, or users who have opted out of tracking will always see the **Default UI**. The system only begins personalising the experience once explicit cookie consent is gathered and sufficient intent signals (e.g., multiple related searches) are collected.
+### Handling the "Cold Start" & Degradation
+New users, first-time visitors, or users who have opted out of tracking will always see the **Default UI**. The system only begins personalising the experience once explicit cookie consent is gathered and sufficient intent signals are collected. Furthermore, if the hosted LLM API call times out or throws an error, the system safely degrades to the standard, unpersonalized UI rather than blocking the user's booking flow.
 
 ### Conflicting Signals & Fallbacks
 The AI's job is purely to extract structured signals from clicks. The system's rules engine decides what that signal implies for the UI. If the AI extracts low-confidence or contradictory signals (e.g., searching for 5-star hotels but budget flights), the **Confidence Check** fails, and the system safely falls back to the Default UI to prevent a jarring user experience.
@@ -58,7 +73,7 @@ The AI's job is purely to extract structured signals from clicks. The system's r
 When managing AI projects, it is important to divide work into High-Impact, Neutral, and Time-Wasting tasks.
 
 *   **High-Impact (Leverage):** Using AI in the background to extract user intent from clicks. This is the core bet that drives cross-selling.
-*   **Neutral:** The actual frontend code that changes the layout. Once we have the intent, standard web development tools handle the UI shifts easily.
+*   **Neutral:** The actual frontend code that changes the layout. Once we have the intent, standard web development tools handle the UI shifts easily, making it a well-understood, low-risk execution task rather than a strategic differentiator.
 *   **Time-Wasting (Overhead):** Running AI during active page loads. We avoid this by processing in the background, keeping the site fast.
 
 ## Cost and Feasibility
@@ -79,7 +94,7 @@ Because the travel market is so large, even a fractional increase in cross-verti
 To clearly show the value of this feature, we separate our metrics into Inputs, Outputs, and Guardrails:
 
 **1. Leading Indicators (Input Metrics):**
-*   **AI Success Rate:** The percentage of user clicks that the AI successfully understands and turns into a structured profile without hallucinating or triggering the low-confidence fallback.
+*   **AI Success Rate:** The percentage of user clicks that the AI successfully understands and turns into a structured profile without hallucinating, timing out, or triggering the low-confidence fallback.
 *   **Storage Speed:** Checking if our fast storage (Redis) is successfully keeping the website loading quickly.
 
 **2. Main Goals (Output Metrics):**
@@ -89,7 +104,7 @@ To clearly show the value of this feature, we separate our metrics into Inputs, 
 
 **3. Safety Checks (Guardrail Metrics):**
 *   **Privacy Compliance:** 0 cases where personalization signals were generated for a user without explicit cookie consent. Our automated test suite confirmed 0 violations.
-*   **Speed Penalties:** The website must load the memory from Redis in less than 2 milliseconds to keep the search experience fast.
+*   **Speed Penalties:** The website must load the memory from Redis with a **P95 < 15ms** and **P99 < 50ms** (over an internal VPC) to ensure zero degradation to the core search experience. Tail latency is what breaks UX, so averages are insufficient.
 
 ## Core Components
 - `simulation.py`: The script running the simulated users.
