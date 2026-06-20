@@ -11,7 +11,7 @@ PRODUCT MANAGEMENT ARCHITECTURE NOTES: THE AI GATEWAY (llm_client.py)
    Historically, extracting memory on every session was cost-prohibitive. 
    By utilizing lightweight, fast models (Gemini 2.5 Flash), the unit economics shift drastically.
    Current Cost Estimation: ~$0.0001 per Monthly Active User (MAU). 
-   This makes "Context Engineering at Scale" financially viable for a platform like Skyscanner.
+   This makes "Context Engineering at Scale" financially viable for a platform like Context Engine.
 
 2. Latency & SLA Budgets:
    LLM calls inherently introduce latency (typically 500ms - 2000ms).
@@ -39,7 +39,7 @@ LLM_COST_OUTPUT_1M = 0.30  # $ per 1 million output tokens
 
 # Security Notice: API keys must never be hardcoded. 
 # Ensure GEMINI_API_KEY is injected via secure environment variables or a secret manager in production.
-API_KEY = os.environ.get("GEMINI_API_KEY")
+API_KEY = os.environ.get("GEMINI_API_KEY") or "YOUR_GEMINI_API_KEY_HERE"
 client = None
 LIVE_LLM_MODE = False
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -65,6 +65,29 @@ llm_traces = []
 @mlflow.trace(name="gemini_generate_content", span_type="llm")
 def generate_content_with_retry(prompt: str, response_mime_type: str = None):
     """Generates content using the Gemini API client with exponential backoff for 429 rate limits."""
+    if not LIVE_LLM_MODE:
+        class MockResponse:
+            def __init__(self, text):
+                self.text = text
+                
+        # Generate a realistic mock response depending on the prompt
+        if "Intent Broker" in prompt:
+            res = '{"active_destination": "BCN", "flight_dates": "2026-07-16 to 2026-07-25", "trip_vibe": "Solo Explorer"}'
+        elif "Memory Broker" in prompt:
+            res = '{"operational_preferences": {"baggage_tolerance": "heavy_checked", "proximity_anxiety": "high"}}'
+        else:
+            res = '{"mock": "response"}'
+            
+        usage_stats["llm_calls_made"] += 1
+        usage_stats["llm_input_tokens"] += len(prompt) // 4
+        usage_stats["llm_output_tokens"] += len(res) // 4
+        
+        span = mlflow.get_current_active_span()
+        if span:
+            span.set_attribute("mock_mode", True)
+            
+        return MockResponse(res)
+
     if not client:
         return None
     
