@@ -1,0 +1,9 @@
+google-cloud-aiplatform>=1.38.0
+google-adk
+pandas
+opentelemetry-sdk
+opentelemetry-exporter-gcp-trace
+opentelemetry-instrumentation-google-genai
+opentelemetry-exporter-gcp-logging
+opentelemetry-exporter-gcp-monitoring
+nest_asyncio
